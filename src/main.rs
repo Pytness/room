@@ -7,6 +7,7 @@ enum Mode {
     #[default]
     Normal,
     Search,
+    RenameTab,
 }
 
 impl std::fmt::Display for Mode {
@@ -17,6 +18,7 @@ impl std::fmt::Display for Mode {
             match self {
                 Mode::Normal => "Normal",
                 Mode::Search => "Search",
+                Mode::RenameTab => "Rename Tab",
             },
         )
     }
@@ -52,7 +54,8 @@ struct State {
     initialized: bool,
     mode: Mode,
     tabs: Vec<TabInfo>,
-    filter: String,
+    filter_buffer: String,
+    name_buffer: String,
     selected: Option<usize>,
     config: Config,
     tab_pane_count: HashMap<usize, usize>,
@@ -72,13 +75,23 @@ impl State {
 
     fn filter(&self, tab: &&TabInfo) -> bool {
         if self.config.ignore_case {
-            tab.name.to_lowercase() == self.filter.to_lowercase()
+            tab.name.to_lowercase() == self.filter_buffer.to_lowercase()
                 || tab
                     .name
                     .to_lowercase()
-                    .contains(&self.filter.to_lowercase())
+                    .contains(&self.filter_buffer.to_lowercase())
         } else {
-            tab.name == self.filter || tab.name.contains(&self.filter)
+            tab.name == self.filter_buffer || tab.name.contains(&self.filter_buffer)
+        }
+    }
+
+    fn rename_selected_tab(&self) {
+        if let Some(selected) = self.selected {
+            let tab = self.tabs.iter().find(|tab| tab.position == selected);
+
+            if let Some(tab) = tab {
+                rename_tab(tab.position as u32, self.name_buffer.clone());
+            }
         }
     }
 
@@ -175,6 +188,9 @@ impl State {
             Key::Char('/') => {
                 self.mode = Mode::Search;
             }
+            Key::Char('r') => {
+                self.mode = Mode::RenameTab;
+            }
             Key::Esc | Key::Ctrl('q') => {
                 close_focus();
             }
@@ -201,19 +217,50 @@ impl State {
 
         match key {
             Key::Esc => {
+                self.filter_buffer.clear();
+                self.reset_selection();
                 self.mode = Mode::Normal;
             }
             Key::Char('\n') => {
-                self.focus_selected_tab();
+                // self.focus_selected_tab();
+                self.mode = Mode::Normal;
             }
-
             Key::Backspace => {
-                self.filter.pop();
+                self.filter_buffer.pop();
                 self.reset_selection();
             }
 
             Key::Char(c) => {
-                self.filter.push(c);
+                self.filter_buffer.push(c);
+                self.reset_selection();
+            }
+            _ => {
+                handled = false;
+            }
+        }
+
+        handled
+    }
+
+    fn handle_rename_key(&mut self, key: Key) -> bool {
+        let mut handled: bool = true;
+
+        match key {
+            Key::Esc => {
+                self.mode = Mode::Normal;
+            }
+            Key::Char('\n') => {
+                self.rename_selected_tab();
+                self.mode = Mode::Normal;
+            }
+
+            Key::Backspace => {
+                self.name_buffer.pop();
+                self.reset_selection();
+            }
+
+            Key::Char(c) => {
+                self.name_buffer.push(c);
                 self.reset_selection();
             }
             _ => {
@@ -229,6 +276,7 @@ impl State {
         match self.mode {
             Mode::Normal => self.handle_normal_key(key),
             Mode::Search => self.handle_search_key(key),
+            Mode::RenameTab => self.handle_rename_key(key),
         }
     }
 
@@ -264,6 +312,27 @@ impl State {
                 (tab, terminal_count)
             })
             .collect();
+    }
+
+    fn render_mode(&self) -> String {
+        match self.mode {
+            Mode::Normal | Mode::Search => {
+                format!(
+                    "({}) {} {}",
+                    self.mode,
+                    ">",
+                    self.filter_buffer.dimmed().italic()
+                )
+            }
+            Mode::RenameTab => {
+                format!(
+                    "({}) {} {}",
+                    self.mode,
+                    ">",
+                    self.name_buffer.dimmed().italic()
+                )
+            }
+        }
     }
 }
 
@@ -306,13 +375,11 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, _rows: usize, _cols: usize) {
-        println!(
-            "({}) {} {}",
-            self.mode,
-            ">".cyan().bold(),
-            self.filter.dimmed().italic()
-        );
+        println!();
 
+        let mode = self.render_mode();
+
+        println!("{}", mode);
         println!(
             "{}",
             self.viewable_tabs_iter()
