@@ -5,7 +5,10 @@ layout {
     pane split_direction="vertical" {
         pane edit="src/main.rs"
         pane {
-            pane edit="Cargo.toml"
+            pane command="bash" {
+                args "-c" "tail -f /tmp/zellij-1000/zellij-log/zellij.log"
+            }
+
             pane stacked=true {
                 pane size="10%" command="bash" name="COMPILE AND RELOAD PLUGIN" {
                     args "-c" "cargo build && zellij action start-or-reload-plugin file:target/wasm32-wasi/debug/room.wasm"
