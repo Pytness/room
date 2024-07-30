@@ -6,7 +6,7 @@ use zellij_tile::prelude::*;
 enum Mode {
     #[default]
     Normal,
-    Insert,
+    Search,
 }
 
 impl std::fmt::Display for Mode {
@@ -16,7 +16,7 @@ impl std::fmt::Display for Mode {
             "{}",
             match self {
                 Mode::Normal => "Normal",
-                Mode::Insert => "Insert",
+                Mode::Search => "Search",
             },
         )
     }
@@ -172,8 +172,8 @@ impl State {
     fn handle_normal_key(&mut self, key: Key) -> bool {
         let mut handled: bool = true;
         match key {
-            Key::Char('i') => {
-                self.mode = Mode::Insert;
+            Key::Char('/') => {
+                self.mode = Mode::Search;
             }
             Key::Esc | Key::Ctrl('q') => {
                 close_focus();
@@ -195,8 +195,8 @@ impl State {
         handled
     }
 
-    /// Handles keys in insert mode. Returns true if the key was handled, false otherwise.
-    fn handle_insert_key(&mut self, key: Key) -> bool {
+    /// Handles keys in search mode. Returns true if the key was handled, false otherwise.
+    fn handle_search_key(&mut self, key: Key) -> bool {
         let mut handled: bool = true;
 
         match key {
@@ -228,7 +228,7 @@ impl State {
     fn handle_key_event(&mut self, key: Key) -> bool {
         match self.mode {
             Mode::Normal => self.handle_normal_key(key),
-            Mode::Insert => self.handle_insert_key(key),
+            Mode::Search => self.handle_search_key(key),
         }
     }
 
