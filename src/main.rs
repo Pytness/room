@@ -134,6 +134,32 @@ impl State {
         }
     }
 
+    fn create_unfocused_new_tab(&self) {
+        let current_tab = self
+            .tabs
+            .iter()
+            .find(|tab| tab.active)
+            .map(|tab| tab.position)
+            .unwrap_or(0) as u32;
+
+        new_tab();
+
+        go_to_tab(current_tab);
+    }
+
+    fn delete_select_tab(&self) {
+        let current_tab = self
+            .tabs
+            .iter()
+            .find(|tab| tab.active)
+            .map(|tab| tab.position)
+            .unwrap_or(0) as u32;
+
+        go_to_tab(self.selected.unwrap() as u32);
+        close_focused_tab();
+        go_to_tab(current_tab);
+    }
+
     fn select_down(&mut self) {
         let tabs = self.tabs.iter().filter(|tab| self.filter(tab));
 
@@ -202,6 +228,13 @@ impl State {
             }
             Key::Char('\n') | Key::Char('l') => {
                 self.focus_selected_tab();
+            }
+            Key::Char('c') => {
+                self.create_unfocused_new_tab();
+            }
+
+            Key::Char('d') => {
+                self.delete_select_tab();
             }
             _ => {
                 handled = false;
