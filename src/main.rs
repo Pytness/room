@@ -3,16 +3,74 @@ use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
 
 #[derive(Default)]
+enum Mode {
+    #[default]
+    Normal,
+    Insert,
+}
+
+impl std::fmt::Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Mode::Normal => "Normal",
+                Mode::Insert => "Insert",
+            },
+        )
+    }
+}
+
+#[derive(Default)]
+struct Config {
+    ignore_case: bool,
+    full_screen: bool,
+}
+
+impl Config {
+    fn from_configuration(configuration: BTreeMap<String, String>) -> Self {
+        let ignore_case = match configuration.get("ignore_case" as &str) {
+            Some(value) => value.trim().parse().unwrap(),
+            None => true,
+        };
+
+        let full_screen = match configuration.get("fullscreen" as &str) {
+            Some(value) => value.trim().parse().unwrap(),
+            None => false,
+        };
+
+        Self {
+            ignore_case,
+            full_screen,
+        }
+    }
+}
+
+#[derive(Default)]
 struct State {
+    initialized: bool,
+    mode: Mode,
     tabs: Vec<TabInfo>,
     filter: String,
     selected: Option<usize>,
-    ignore_case: bool,
+    config: Config,
 }
 
 impl State {
+    fn initialize(&mut self) {
+        let plugin_id = get_plugin_ids().plugin_id;
+        focus_plugin_pane(plugin_id, true);
+
+        if self.config.full_screen {
+            toggle_focus_fullscreen();
+        }
+
+        self.initialized = true;
+    }
+
     fn filter(&self, tab: &&TabInfo) -> bool {
-        if self.ignore_case {
+        if self.config.ignore_case {
             tab.name.to_lowercase() == self.filter.to_lowercase()
                 || tab
                     .name
@@ -21,6 +79,15 @@ impl State {
         } else {
             tab.name == self.filter || tab.name.contains(&self.filter)
         }
+    }
+
+    fn update_tab_info(&mut self, tab_info: Vec<TabInfo>) {
+        self.selected =
+            tab_info
+                .iter()
+                .find_map(|tab| if tab.active { Some(tab.position) } else { None });
+
+        self.tabs = tab_info;
     }
 
     fn viewable_tabs_iter(&self) -> impl Iterator<Item = &TabInfo> {
@@ -38,6 +105,18 @@ impl State {
             self.selected = None
         } else if let Some(tab) = tabs.first() {
             self.selected = Some(tab.position)
+        }
+    }
+
+    fn focus_selected_tab(&mut self) {
+        let tab = self
+            .tabs
+            .iter()
+            .find(|tab| Some(tab.position) == self.selected);
+
+        if let Some(tab) = tab {
+            close_focus();
+            switch_tab_to(tab.position as u32 + 1);
         }
     }
 
@@ -69,6 +148,7 @@ impl State {
 
         let mut can_select = false;
         let mut last = None;
+
         for TabInfo { position, .. } in tabs {
             if last.is_none() {
                 last.replace(position);
@@ -86,6 +166,87 @@ impl State {
             self.selected = Some(*position)
         }
     }
+
+    /// Handles keys in normal mode. Returns true if the key was handled, false otherwise.
+    fn handle_normal_key(&mut self, key: Key) -> bool {
+        let mut handled: bool = true;
+        match key {
+            Key::Char('i') => {
+                self.mode = Mode::Insert;
+            }
+            Key::Esc | Key::Ctrl('q') => {
+                close_focus();
+            }
+            Key::Down | Key::Char('j') => {
+                self.select_down();
+            }
+            Key::Up | Key::Char('k') => {
+                self.select_up();
+            }
+            Key::Char('\n') | Key::Char('l') => {
+                self.focus_selected_tab();
+            }
+            _ => {
+                handled = false;
+            }
+        }
+
+        handled
+    }
+
+    /// Handles keys in insert mode. Returns true if the key was handled, false otherwise.
+    fn handle_insert_key(&mut self, key: Key) -> bool {
+        let mut handled: bool = true;
+
+        match key {
+            Key::Esc => {
+                self.mode = Mode::Normal;
+            }
+            Key::Char('\n') => {
+                self.focus_selected_tab();
+            }
+
+            Key::Backspace => {
+                self.filter.pop();
+                self.reset_selection();
+            }
+
+            Key::Char(c) => {
+                self.filter.push(c);
+                self.reset_selection();
+            }
+            _ => {
+                handled = false;
+            }
+        }
+
+        handled
+    }
+
+    /// Handles a key event. Returns true if the key was handled, false otherwise.
+    fn handle_key_event(&mut self, key: Key) -> bool {
+        match self.mode {
+            Mode::Normal => self.handle_normal_key(key),
+            Mode::Insert => self.handle_insert_key(key),
+        }
+    }
+
+    fn render_tab_info(&self, tab: &TabInfo) -> String {
+        let row = if tab.active {
+            format!("{} - {}", tab.position + 1, tab.name)
+                .red()
+                .bold()
+                .to_string()
+        } else {
+            format!("{} - {}", tab.position + 1, tab.name)
+        };
+
+        if Some(tab.position) == self.selected {
+            row.on_cyan().to_string()
+        } else {
+            row
+        }
+    }
 }
 
 register_plugin!(State);
@@ -100,73 +261,26 @@ impl ZellijPlugin for State {
             PermissionType::ChangeApplicationState,
         ]);
 
-        self.ignore_case = match configuration.get("ignore_case" as &str) {
-            Some(value) => value.trim().parse().unwrap(),
-            None => true,
-        };
+        self.config = Config::from_configuration(configuration);
 
         subscribe(&[EventType::TabUpdate, EventType::Key]);
     }
 
     fn update(&mut self, event: Event) -> bool {
+        if !self.initialized {
+            self.initialize();
+        }
+
         let mut should_render = false;
+
         match event {
-            Event::TabUpdate(tab_info) => {
-                self.selected =
-                    tab_info.iter().find_map(
-                        |tab| {
-                            if tab.active {
-                                Some(tab.position)
-                            } else {
-                                None
-                            }
-                        },
-                    );
-
-                self.tabs = tab_info;
-                should_render = true;
+            Event::TabUpdate(tab_info) => self.update_tab_info(tab_info),
+            Event::Key(key) => {
+                should_render = self.handle_key_event(key);
             }
-
-            Event::Key(Key::Esc | Key::Ctrl('c')) => {
-                close_focus();
+            _ => {
+                should_render = false;
             }
-
-            Event::Key(Key::Down | Key::BackTab) => {
-                self.select_down();
-
-                should_render = true;
-            }
-            Event::Key(Key::Up | Key::Ctrl('k')) => {
-                self.select_up();
-
-                should_render = true;
-            }
-            Event::Key(Key::Char('\n')) => {
-                let tab = self
-                    .tabs
-                    .iter()
-                    .find(|tab| Some(tab.position) == self.selected);
-
-                if let Some(tab) = tab {
-                    close_focus();
-                    switch_tab_to(tab.position as u32 + 1);
-                }
-            }
-            Event::Key(Key::Backspace) => {
-                self.filter.pop();
-
-                self.reset_selection();
-
-                should_render = true;
-            }
-            Event::Key(Key::Char(c)) if c.is_ascii_alphabetic() || c.is_ascii_digit() => {
-                self.filter.push(c);
-
-                self.reset_selection();
-
-                should_render = true;
-            }
-            _ => (),
         };
 
         should_render
@@ -174,34 +288,16 @@ impl ZellijPlugin for State {
 
     fn render(&mut self, _rows: usize, _cols: usize) {
         println!(
-            "{} {}",
+            "({}) {} {}",
+            self.mode,
             ">".cyan().bold(),
-            if self.filter.is_empty() {
-                "(filter)".dimmed().italic().to_string()
-            } else {
-                self.filter.dimmed().italic().to_string()
-            }
+            self.filter.dimmed().italic()
         );
 
         println!(
             "{}",
             self.viewable_tabs_iter()
-                .map(|tab| {
-                    let row = if tab.active {
-                        format!("{} - {}", tab.position + 1, tab.name)
-                            .red()
-                            .bold()
-                            .to_string()
-                    } else {
-                        format!("{} - {}", tab.position + 1, tab.name)
-                    };
-
-                    if Some(tab.position) == self.selected {
-                        row.on_cyan().to_string()
-                    } else {
-                        row
-                    }
-                })
+                .map(|tab| { self.render_tab_info(tab) })
                 .collect::<Vec<String>>()
                 .join("\n")
         );
