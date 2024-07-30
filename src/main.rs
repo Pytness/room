@@ -297,7 +297,7 @@ impl State {
         };
 
         if Some(tab.position) == self.selected {
-            row.on_cyan().to_string()
+            row.black().on_cyan().to_string()
         } else {
             row
         }
