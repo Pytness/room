@@ -358,7 +358,7 @@ impl ZellijPlugin for State {
             self.initialize();
         }
 
-        let mut should_render = false;
+        let mut should_render = true;
 
         match event {
             Event::PaneUpdate(manifest) => self.build_tab_pane_count(manifest),
