@@ -1,5 +1,5 @@
 use owo_colors::OwoColorize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use zellij_tile::prelude::*;
 
 #[derive(Default)]
@@ -55,6 +55,7 @@ struct State {
     filter: String,
     selected: Option<usize>,
     config: Config,
+    tab_pane_count: HashMap<usize, usize>,
 }
 
 impl State {
@@ -232,13 +233,19 @@ impl State {
     }
 
     fn render_tab_info(&self, tab: &TabInfo) -> String {
+        let pane_count = self.tab_pane_count.get(&tab.position).unwrap_or(&0);
+
+        let row = format!(
+            "({}) -> {}: ({} terminals)",
+            tab.position + 1,
+            tab.name,
+            pane_count
+        );
+
         let row = if tab.active {
-            format!("{} - {}", tab.position + 1, tab.name)
-                .red()
-                .bold()
-                .to_string()
+            row.red().bold().to_string()
         } else {
-            format!("{} - {}", tab.position + 1, tab.name)
+            row
         };
 
         if Some(tab.position) == self.selected {
@@ -246,6 +253,17 @@ impl State {
         } else {
             row
         }
+    }
+
+    fn build_tab_pane_count(&mut self, manifest: PaneManifest) {
+        self.tab_pane_count = manifest
+            .panes
+            .iter()
+            .map(|(&tab, page)| {
+                let terminal_count = page.iter().filter(|panel| !panel.is_plugin).count();
+                (tab, terminal_count)
+            })
+            .collect();
     }
 }
 
@@ -263,7 +281,7 @@ impl ZellijPlugin for State {
 
         self.config = Config::from_configuration(configuration);
 
-        subscribe(&[EventType::TabUpdate, EventType::Key]);
+        subscribe(&[EventType::PaneUpdate, EventType::TabUpdate, EventType::Key]);
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -274,6 +292,7 @@ impl ZellijPlugin for State {
         let mut should_render = false;
 
         match event {
+            Event::PaneUpdate(manifest) => self.build_tab_pane_count(manifest),
             Event::TabUpdate(tab_info) => self.update_tab_info(tab_info),
             Event::Key(key) => {
                 should_render = self.handle_key_event(key);
