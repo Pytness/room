@@ -284,17 +284,16 @@ impl State {
             }
             Key::Char('\n') => {
                 self.rename_selected_tab();
+                self.name_buffer.clear();
                 self.mode = Mode::Normal;
             }
 
             Key::Backspace => {
                 self.name_buffer.pop();
-                self.reset_selection();
             }
 
             Key::Char(c) => {
                 self.name_buffer.push(c);
-                self.reset_selection();
             }
             _ => {
                 handled = false;
