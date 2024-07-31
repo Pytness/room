@@ -113,12 +113,12 @@ impl State {
     }
 
     fn reset_selection(&mut self) {
-        let tabs = self.viewable_tabs();
-
-        if tabs.is_empty() {
-            self.selected = None
-        } else if let Some(tab) = tabs.first() {
-            self.selected = Some(tab.position)
+        self.selected = if matches!(self.mode, Mode::Search) {
+            None
+        } else {
+            // TODO: look into if the first tab position can be anything else than 0
+            let tabs = self.viewable_tabs();
+            tabs.first().map(|tab| tab.position)
         }
     }
 
@@ -213,6 +213,7 @@ impl State {
         match key {
             Key::Char('/') => {
                 self.mode = Mode::Search;
+                self.reset_selection();
             }
             Key::Char('r') => {
                 self.mode = Mode::RenameTab;
@@ -251,25 +252,25 @@ impl State {
         match key {
             Key::Esc => {
                 self.filter_buffer.clear();
-                self.reset_selection();
                 self.mode = Mode::Normal;
             }
             Key::Char('\n') => {
-                // self.focus_selected_tab();
                 self.mode = Mode::Normal;
             }
             Key::Backspace => {
                 self.filter_buffer.pop();
-                self.reset_selection();
             }
 
             Key::Char(c) => {
                 self.filter_buffer.push(c);
-                self.reset_selection();
             }
             _ => {
                 handled = false;
             }
+        }
+
+        if handled {
+            self.reset_selection();
         }
 
         handled
