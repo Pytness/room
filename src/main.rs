@@ -346,6 +346,21 @@ impl State {
             .collect();
     }
 
+    fn identify_self_pane(&self, manifest: &PaneManifest) -> Option<PaneInfo> {
+        let plugin_id = get_plugin_ids().plugin_id;
+
+        manifest
+            .panes
+            .iter()
+            .filter_map(|(_tab, panes)| {
+                panes
+                    .iter()
+                    .find(|pane| pane.id == plugin_id && pane.is_plugin)
+                    .cloned()
+            })
+            .next()
+    }
+
     fn render_mode(&self) -> String {
         match self.mode {
             Mode::Normal | Mode::Search => {
@@ -393,7 +408,15 @@ impl ZellijPlugin for State {
         let mut should_render = true;
 
         match event {
-            Event::PaneUpdate(manifest) => self.build_tab_pane_count(manifest),
+            Event::PaneUpdate(manifest) => {
+                if let Some(self_pane) = self.identify_self_pane(&manifest) {
+                    if !self_pane.is_focused {
+                        close_self();
+                    }
+                }
+
+                self.build_tab_pane_count(manifest);
+            }
             Event::TabUpdate(tab_info) => self.update_tab_info(tab_info),
             Event::Key(key) => {
                 should_render = self.handle_key_event(key);
