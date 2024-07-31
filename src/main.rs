@@ -90,7 +90,7 @@ impl State {
             let tab = self.tabs.iter().find(|tab| tab.position == selected);
 
             if let Some(tab) = tab {
-                rename_tab(tab.position as u32, self.name_buffer.clone());
+                rename_tab(tab.position as u32 + 1, self.name_buffer.clone());
             }
         }
     }
