@@ -145,7 +145,13 @@ impl State {
 
         go_to_tab(target);
         close_focused_tab();
-        go_to_tab(current_tab);
+
+        // Tabs info is not yet updated, account for the tab that was just closed
+        if target < current_tab {
+            go_to_tab(current_tab - 1);
+        } else {
+            go_to_tab(current_tab);
+        }
 
         // Tabs info is not yet updated, account for the tab that was just closed
         let tab_count = self.get_tab_count() - 1;
@@ -153,6 +159,7 @@ impl State {
         if self.selected_tab_index.unwrap() >= tab_count {
             self.selected_tab_index = Some(tab_count - 1);
         }
+        self.should_exit_if_tab_change = false
     }
 
     fn select_next(&mut self) {
@@ -394,11 +401,12 @@ impl ZellijPlugin for State {
 
                     self.update_tab_info(tab_info);
 
-                    if previous_selected != self.selected_tab_index.unwrap()
-                        && self.should_exit_if_tab_change
-                    {
+                    if self.should_exit_if_tab_change {
+                        if previous_selected != self.selected_tab_index.unwrap() {
+                            exit_plugin(self);
+                        }
+                    } else {
                         self.should_exit_if_tab_change = true;
-                        exit_plugin(self);
                     }
                 }
             }
