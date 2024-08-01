@@ -106,11 +106,15 @@ impl State {
         self.tabs.len()
     }
 
+    fn get_visible_tab_count(&self) -> usize {
+        self.viewable_tabs_iter().count()
+    }
+
     fn reset_selection(&mut self) {
         self.selected_tab_index = if matches!(self.mode, Mode::Search) {
             None
         } else {
-            Some(0)
+            self.viewable_tabs_iter().next().map(|tab| tab.position)
         }
     }
 
@@ -154,32 +158,63 @@ impl State {
         }
 
         // Tabs info is not yet updated, account for the tab that was just closed
-        let tab_count = self.get_tab_count() - 1;
+        let tab_count = self.get_visible_tab_count() - 1;
 
         if self.selected_tab_index.unwrap() >= tab_count {
-            self.selected_tab_index = Some(tab_count - 1);
+            self.select_previous()
         }
+
         self.should_exit_if_tab_change = false
     }
 
     fn select_next(&mut self) {
-        let tab_count = self.viewable_tabs_iter().count();
+        assert!(self.selected_tab_index.is_some());
 
-        let position = self
-            .selected_tab_index
-            .map_or_else(|| 0, |index| (index + 1) % tab_count);
+        let current_position = self.selected_tab_index.unwrap();
 
-        self.selected_tab_index = Some(position);
+        let viewable_tabs = self.viewable_tabs();
+        let tab_count = viewable_tabs.len();
+
+        let first_position = viewable_tabs.first().map(|tab| tab.position);
+
+        // Find the index of the selected tab
+        let index = viewable_tabs
+            .iter()
+            .position(|tab| tab.position == current_position);
+
+        if let Some(index) = index {
+            let next_position = viewable_tabs.get((index + 1) % tab_count);
+            self.selected_tab_index = next_position.map(|tab| tab.position);
+        } else {
+            self.selected_tab_index = first_position;
+        }
     }
 
     fn select_previous(&mut self) {
-        let tab_count = self.viewable_tabs_iter().count();
+        assert!(self.selected_tab_index.is_some());
 
-        let position = self
-            .selected_tab_index
-            .map_or_else(|| 0, |index| (index + tab_count - 1) % tab_count);
+        let current_position = self.selected_tab_index.unwrap();
 
-        self.selected_tab_index = Some(position);
+        let viewable_tabs = self.viewable_tabs();
+        let tab_count = viewable_tabs.len();
+
+        let last_position = viewable_tabs.last().map(|tab| tab.position);
+
+        // Find the index of the selected tab
+        let index = viewable_tabs
+            .iter()
+            .position(|tab| tab.position == current_position);
+
+        if let Some(index) = index {
+            let previous_position = if index == 0 {
+                viewable_tabs.get(tab_count - 1)
+            } else {
+                viewable_tabs.get(index - 1)
+            };
+            self.selected_tab_index = previous_position.map(|tab| tab.position);
+        } else {
+            self.selected_tab_index = last_position;
+        }
     }
 
     /// Handles keys in normal mode. Returns true if the key was handled, false otherwise.
