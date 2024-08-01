@@ -43,7 +43,6 @@ struct State {
 }
 
 fn exit_plugin(state: &State) {
-    eprintln!("Exiting plugin state: {:?}", state);
     close_self();
 }
 
@@ -84,9 +83,9 @@ impl State {
     }
 
     fn update_tab_info(&mut self, tab_info: Vec<TabInfo>) {
-        self.selected_tab_index = tab_info
-            .iter()
-            .find_map(|tab| tab.active.then_some(tab.position));
+        // self.selected_tab_index = tab_info
+        //     .iter()
+        //     .find_map(|tab| tab.active.then_some(tab.position));
 
         self.tabs = tab_info;
     }
@@ -99,13 +98,15 @@ impl State {
         self.viewable_tabs_iter().collect()
     }
 
+    fn get_tab_count(&self) -> usize {
+        self.tabs.len()
+    }
+
     fn reset_selection(&mut self) {
         self.selected_tab_index = if matches!(self.mode, Mode::Search) {
             None
         } else {
-            // TODO: look into if the first tab position can be anything else than 0
-            let tabs = self.viewable_tabs();
-            tabs.first().map(|tab| tab.position)
+            Some(0)
         }
     }
 
@@ -121,32 +122,33 @@ impl State {
         }
     }
 
+    fn get_active_tab(&self) -> Option<&TabInfo> {
+        self.tabs.iter().find(|tab| tab.active)
+    }
+
     fn create_unfocused_new_tab(&mut self) {
-        let current_tab = self
-            .tabs
-            .iter()
-            .find(|tab| tab.active)
-            .map(|tab| tab.position)
-            .unwrap_or(0) as u32;
+        let current_tab = self.get_active_tab().map(|tab| tab.position).unwrap_or(0) as u32;
 
         self.should_exit_if_tab_change = false;
         new_tab();
         go_to_tab(current_tab);
     }
 
-    fn delete_selected_tab(&self) {
-        let current_tab = self
-            .tabs
-            .iter()
-            .find(|tab| tab.active)
-            .map(|tab| tab.position)
-            .unwrap_or(0) as u32;
+    fn delete_selected_tab(&mut self) {
+        let current_tab = self.get_active_tab().map(|tab| tab.position).unwrap_or(0) as u32;
 
         let target = self.selected_tab_index.unwrap() as u32;
 
         go_to_tab(target);
         close_focused_tab();
         go_to_tab(current_tab);
+
+        // Tabs info is not yet updated, account for the tab that was just closed
+        let tab_count = self.get_tab_count() - 1;
+
+        if self.selected_tab_index.unwrap() >= tab_count {
+            self.selected_tab_index = Some(tab_count - 1);
+        }
     }
 
     fn select_next(&mut self) {
