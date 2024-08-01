@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Config {
     pub ignore_case: bool,
     pub full_screen: bool,

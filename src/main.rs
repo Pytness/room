@@ -7,7 +7,7 @@ use zellij_tile::prelude::*;
 
 use self::config::Config;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 enum Mode {
     #[default]
     Normal,
@@ -29,9 +29,10 @@ impl std::fmt::Display for Mode {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct State {
     initialized: bool,
+    should_exit_if_tab_change: bool,
     mode: Mode,
     tabs: Vec<TabInfo>,
     filter_buffer: String,
@@ -41,8 +42,15 @@ struct State {
     tab_pane_count: HashMap<usize, usize>,
 }
 
+fn exit_plugin(state: &State) {
+    eprintln!("Exiting plugin state: {:?}", state);
+    close_self();
+}
+
 impl State {
     fn initialize(&mut self) {
+        self.should_exit_if_tab_change = true;
+
         let plugin_id = get_plugin_ids().plugin_id;
         focus_plugin_pane(plugin_id, true);
 
@@ -113,7 +121,7 @@ impl State {
         }
     }
 
-    fn create_unfocused_new_tab(&self) {
+    fn create_unfocused_new_tab(&mut self) {
         let current_tab = self
             .tabs
             .iter()
@@ -121,8 +129,8 @@ impl State {
             .map(|tab| tab.position)
             .unwrap_or(0) as u32;
 
+        self.should_exit_if_tab_change = false;
         new_tab();
-
         go_to_tab(current_tab);
     }
 
@@ -134,7 +142,9 @@ impl State {
             .map(|tab| tab.position)
             .unwrap_or(0) as u32;
 
-        go_to_tab(self.selected_tab_index.unwrap() as u32);
+        let target = self.selected_tab_index.unwrap() as u32;
+
+        go_to_tab(target);
         close_focused_tab();
         go_to_tab(current_tab);
     }
@@ -364,7 +374,7 @@ impl ZellijPlugin for State {
             Event::PaneUpdate(manifest) => {
                 if let Some(self_pane) = self.identify_self_pane(&manifest) {
                     if !self_pane.is_focused {
-                        close_self();
+                        exit_plugin(self);
                     }
                 }
 
@@ -378,8 +388,11 @@ impl ZellijPlugin for State {
 
                     self.update_tab_info(tab_info);
 
-                    if previous_selected != self.selected_tab_index.unwrap() {
-                        close_self();
+                    if previous_selected != self.selected_tab_index.unwrap()
+                        && self.should_exit_if_tab_change
+                    {
+                        self.should_exit_if_tab_change = true;
+                        exit_plugin(self);
                     }
                 }
             }
