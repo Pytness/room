@@ -1,6 +1,7 @@
 mod config;
 
 use owo_colors::OwoColorize;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use zellij_tile::prelude::*;
 
@@ -52,16 +53,16 @@ impl State {
         self.initialized = true;
     }
 
-    fn filter(&self, tab: &&TabInfo) -> bool {
+    fn filter_tab(&self, tab: &&TabInfo) -> bool {
+        let mut name: Cow<String> = Cow::Borrowed(&tab.name);
+        let mut filter: Cow<String> = Cow::Borrowed(&self.filter_buffer);
+
         if self.config.ignore_case {
-            tab.name.to_lowercase() == self.filter_buffer.to_lowercase()
-                || tab
-                    .name
-                    .to_lowercase()
-                    .contains(&self.filter_buffer.to_lowercase())
-        } else {
-            tab.name == self.filter_buffer || tab.name.contains(&self.filter_buffer)
+            name.to_mut().make_ascii_lowercase();
+            filter.to_mut().make_ascii_lowercase();
         }
+
+        name.contains(&*filter)
     }
 
     fn rename_selected_tab(&self) {
@@ -84,7 +85,7 @@ impl State {
     }
 
     fn viewable_tabs_iter(&self) -> impl Iterator<Item = &TabInfo> {
-        self.tabs.iter().filter(|tab| self.filter(tab))
+        self.tabs.iter().filter(|tab| self.filter_tab(tab))
     }
 
     fn viewable_tabs(&self) -> Vec<&TabInfo> {
