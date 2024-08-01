@@ -370,7 +370,19 @@ impl ZellijPlugin for State {
 
                 self.build_tab_pane_count(manifest);
             }
-            Event::TabUpdate(tab_info) => self.update_tab_info(tab_info),
+            Event::TabUpdate(tab_info) => {
+                if self.selected_tab_index.is_none() {
+                    self.update_tab_info(tab_info);
+                } else {
+                    let previous_selected = self.selected_tab_index.unwrap();
+
+                    self.update_tab_info(tab_info);
+
+                    if previous_selected != self.selected_tab_index.unwrap() {
+                        close_self();
+                    }
+                }
+            }
             Event::Key(key) => {
                 should_render = self.handle_key_event(key);
             }
