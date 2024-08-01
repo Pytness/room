@@ -83,9 +83,13 @@ impl State {
     }
 
     fn update_tab_info(&mut self, tab_info: Vec<TabInfo>) {
-        // self.selected_tab_index = tab_info
-        //     .iter()
-        //     .find_map(|tab| tab.active.then_some(tab.position));
+        // TODO: Refactor this, setting selected_tab_index should be anothers function responsibility
+        // tabs are empty the when we open the plugin, so we select the first tab
+        if self.tabs.is_empty() {
+            self.selected_tab_index = tab_info
+                .iter()
+                .find_map(|tab| tab.active.then_some(tab.position));
+        }
 
         self.tabs = tab_info;
     }
