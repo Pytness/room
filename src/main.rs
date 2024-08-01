@@ -36,7 +36,7 @@ struct State {
     tabs: Vec<TabInfo>,
     filter_buffer: String,
     name_buffer: String,
-    selected: Option<usize>,
+    selected_tab_index: Option<usize>,
     config: Config,
     tab_pane_count: HashMap<usize, usize>,
 }
@@ -66,7 +66,7 @@ impl State {
     }
 
     fn rename_selected_tab(&self) {
-        if let Some(selected) = self.selected {
+        if let Some(selected) = self.selected_tab_index {
             let tab = self.tabs.iter().find(|tab| tab.position == selected);
 
             if let Some(tab) = tab {
@@ -76,10 +76,9 @@ impl State {
     }
 
     fn update_tab_info(&mut self, tab_info: Vec<TabInfo>) {
-        self.selected =
-            tab_info
-                .iter()
-                .find_map(|tab| if tab.active { Some(tab.position) } else { None });
+        self.selected_tab_index = tab_info
+            .iter()
+            .find_map(|tab| tab.active.then_some(tab.position));
 
         self.tabs = tab_info;
     }
@@ -93,7 +92,7 @@ impl State {
     }
 
     fn reset_selection(&mut self) {
-        self.selected = if matches!(self.mode, Mode::Search) {
+        self.selected_tab_index = if matches!(self.mode, Mode::Search) {
             None
         } else {
             // TODO: look into if the first tab position can be anything else than 0
@@ -106,7 +105,7 @@ impl State {
         let tab = self
             .tabs
             .iter()
-            .find(|tab| Some(tab.position) == self.selected);
+            .find(|tab| Some(tab.position) == self.selected_tab_index);
 
         if let Some(tab) = tab {
             close_focus();
@@ -127,7 +126,7 @@ impl State {
         go_to_tab(current_tab);
     }
 
-    fn delete_select_tab(&self) {
+    fn delete_selected_tab(&self) {
         let current_tab = self
             .tabs
             .iter()
@@ -135,56 +134,29 @@ impl State {
             .map(|tab| tab.position)
             .unwrap_or(0) as u32;
 
-        go_to_tab(self.selected.unwrap() as u32);
+        go_to_tab(self.selected_tab_index.unwrap() as u32);
         close_focused_tab();
         go_to_tab(current_tab);
     }
 
-    fn select_down(&mut self) {
-        let tabs = self.tabs.iter().filter(|tab| self.filter(tab));
+    fn select_next(&mut self) {
+        let tab_count = self.viewable_tabs_iter().count();
 
-        let mut can_select = false;
-        let mut first = None;
-        for TabInfo { position, .. } in tabs {
-            if first.is_none() {
-                first.replace(position);
-            }
+        let position = self
+            .selected_tab_index
+            .map_or_else(|| 0, |index| (index + 1) % tab_count);
 
-            if can_select {
-                self.selected = Some(*position);
-                return;
-            } else if Some(*position) == self.selected {
-                can_select = true;
-            }
-        }
-
-        if let Some(position) = first {
-            self.selected = Some(*position)
-        }
+        self.selected_tab_index = Some(position);
     }
 
-    fn select_up(&mut self) {
-        let tabs = self.tabs.iter().filter(|tab| self.filter(tab)).rev();
+    fn select_previous(&mut self) {
+        let tab_count = self.viewable_tabs_iter().count();
 
-        let mut can_select = false;
-        let mut last = None;
+        let position = self
+            .selected_tab_index
+            .map_or_else(|| 0, |index| (index + tab_count - 1) % tab_count);
 
-        for TabInfo { position, .. } in tabs {
-            if last.is_none() {
-                last.replace(position);
-            }
-
-            if can_select {
-                self.selected = Some(*position);
-                return;
-            } else if Some(*position) == self.selected {
-                can_select = true;
-            }
-        }
-
-        if let Some(position) = last {
-            self.selected = Some(*position)
-        }
+        self.selected_tab_index = Some(position);
     }
 
     /// Handles keys in normal mode. Returns true if the key was handled, false otherwise.
@@ -202,10 +174,10 @@ impl State {
                 close_focus();
             }
             Key::Down | Key::Char('j') => {
-                self.select_down();
+                self.select_next();
             }
             Key::Up | Key::Char('k') => {
-                self.select_up();
+                self.select_previous();
             }
             Key::Char('\n') | Key::Char('l') => {
                 self.focus_selected_tab();
@@ -215,7 +187,7 @@ impl State {
             }
 
             Key::Char('d') => {
-                self.delete_select_tab();
+                self.delete_selected_tab();
             }
             _ => {
                 handled = false;
@@ -309,7 +281,7 @@ impl State {
             row
         };
 
-        if Some(tab.position) == self.selected {
+        if Some(tab.position) == self.selected_tab_index {
             row.black().on_cyan().to_string()
         } else {
             row
