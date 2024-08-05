@@ -225,6 +225,11 @@ impl State {
                 self.mode = Mode::Search;
                 self.reset_selection();
             }
+
+            Key::Char('K') => {
+                self.filter_buffer.clear();
+                self.reset_selection();
+            }
             Key::Char('r') => {
                 self.mode = Mode::RenameTab;
             }
@@ -240,6 +245,9 @@ impl State {
             Key::Char('\n') | Key::Char('l') => {
                 self.focus_selected_tab();
             }
+
+            // NOTE: Temporarily disabled due to a bug in Zellij
+            /*
             Key::Char('c') => {
                 self.create_unfocused_new_tab();
             }
@@ -247,6 +255,7 @@ impl State {
             Key::Char('d') => {
                 self.delete_selected_tab();
             }
+            */
             _ => {
                 handled = false;
             }
