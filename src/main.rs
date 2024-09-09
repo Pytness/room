@@ -37,7 +37,7 @@ struct State {
     tabs: Vec<TabInfo>,
     filter_buffer: String,
     name_buffer: String,
-    selected_tab_index: Option<usize>,
+    selected_tab_position: Option<usize>,
     config: Config,
     tab_pane_count: HashMap<usize, usize>,
 }
@@ -73,7 +73,7 @@ impl State {
     }
 
     fn rename_selected_tab(&self) {
-        if let Some(selected) = self.selected_tab_index {
+        if let Some(selected) = self.selected_tab_position {
             let tab = self.tabs.iter().find(|tab| tab.position == selected);
 
             if let Some(tab) = tab {
@@ -86,7 +86,7 @@ impl State {
         // TODO: Refactor this, setting selected_tab_index should be anothers function responsibility
         // tabs are empty the when we open the plugin, so we select the first tab
         if self.tabs.is_empty() {
-            self.selected_tab_index = tab_info
+            self.selected_tab_position = tab_info
                 .iter()
                 .find_map(|tab| tab.active.then_some(tab.position));
         }
@@ -111,7 +111,7 @@ impl State {
     }
 
     fn reset_selection(&mut self) {
-        self.selected_tab_index = if matches!(self.mode, Mode::Search) {
+        self.selected_tab_position = if matches!(self.mode, Mode::Search) {
             None
         } else {
             self.viewable_tabs_iter().next().map(|tab| tab.position)
@@ -133,7 +133,7 @@ impl State {
 
     fn get_target_tab(&self) -> Option<&TabInfo> {
         self.viewable_tabs_iter()
-            .find(|tab| Some(tab.position) == self.selected_tab_index)
+            .find(|tab| Some(tab.position) == self.selected_tab_position)
     }
 
     fn create_unfocused_new_tab(&mut self) {
@@ -148,7 +148,7 @@ impl State {
     fn delete_selected_tab(&mut self) {
         let current_tab = self.get_active_tab().map(|tab| tab.position).unwrap_or(0) as u32;
 
-        let target = self.selected_tab_index.unwrap() as u32;
+        let target = self.selected_tab_position.unwrap() as u32;
 
         go_to_tab(target);
         close_focused_tab();
@@ -163,7 +163,7 @@ impl State {
         // Tabs info is not yet updated, account for the tab that was just closed
         let tab_count = self.get_visible_tab_count() - 1;
 
-        if self.selected_tab_index.unwrap() >= tab_count {
+        if self.selected_tab_position.unwrap() >= tab_count {
             self.select_previous()
         }
 
@@ -171,9 +171,9 @@ impl State {
     }
 
     fn select_next(&mut self) {
-        assert!(self.selected_tab_index.is_some());
+        assert!(self.selected_tab_position.is_some());
 
-        let current_position = self.selected_tab_index.unwrap();
+        let current_position = self.selected_tab_position.unwrap();
 
         let viewable_tabs = self.viewable_tabs();
         let tab_count = viewable_tabs.len();
@@ -187,16 +187,16 @@ impl State {
 
         if let Some(index) = index {
             let next_position = viewable_tabs.get((index + 1) % tab_count);
-            self.selected_tab_index = next_position.map(|tab| tab.position);
+            self.selected_tab_position = next_position.map(|tab| tab.position);
         } else {
-            self.selected_tab_index = first_position;
+            self.selected_tab_position = first_position;
         }
     }
 
     fn select_previous(&mut self) {
-        assert!(self.selected_tab_index.is_some());
+        assert!(self.selected_tab_position.is_some());
 
-        let current_position = self.selected_tab_index.unwrap();
+        let current_position = self.selected_tab_position.unwrap();
 
         let viewable_tabs = self.viewable_tabs();
         let tab_count = viewable_tabs.len();
@@ -214,9 +214,9 @@ impl State {
             } else {
                 viewable_tabs.get(index - 1)
             };
-            self.selected_tab_index = previous_position.map(|tab| tab.position);
+            self.selected_tab_position = previous_position.map(|tab| tab.position);
         } else {
-            self.selected_tab_index = last_position;
+            self.selected_tab_position = last_position;
         }
     }
 
@@ -351,7 +351,7 @@ impl State {
             row
         };
 
-        if Some(tab.position) == self.selected_tab_index {
+        if Some(tab.position) == self.selected_tab_position {
             row.black().on_cyan().to_string()
         } else {
             row
@@ -441,15 +441,15 @@ impl ZellijPlugin for State {
                 self.build_tab_pane_count(manifest);
             }
             Event::TabUpdate(tab_info) => {
-                if self.selected_tab_index.is_none() {
+                if self.selected_tab_position.is_none() {
                     self.update_tab_info(tab_info);
                 } else {
-                    let previous_selected = self.selected_tab_index.unwrap();
+                    let previous_selected = self.selected_tab_position.unwrap();
 
                     self.update_tab_info(tab_info);
 
                     if self.should_exit_if_tab_change {
-                        if previous_selected != self.selected_tab_index.unwrap() {
+                        if previous_selected != self.selected_tab_position.unwrap() {
                             exit_plugin(self);
                         }
                     } else {
