@@ -42,7 +42,7 @@ struct State {
     tab_pane_count: HashMap<usize, usize>,
 }
 
-fn exit_plugin(state: &State) {
+fn exit_plugin(_state: &State) {
     close_self();
 }
 
