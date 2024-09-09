@@ -134,6 +134,11 @@ impl State {
         self.tabs.iter().find(|tab| tab.active)
     }
 
+    fn get_target_tab(&self) -> Option<&TabInfo> {
+        self.viewable_tabs_iter()
+            .find(|tab| Some(tab.position) == self.selected_tab_index)
+    }
+
     fn create_unfocused_new_tab(&mut self) {
         let current_tab = self.get_active_tab().map(|tab| tab.position).unwrap_or(0) as u32;
 
