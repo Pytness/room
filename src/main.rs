@@ -119,14 +119,11 @@ impl State {
     }
 
     fn focus_selected_tab(&mut self) {
-        let tab = self
-            .tabs
-            .iter()
-            .find(|tab| Some(tab.position) == self.selected_tab_index);
+        let tab = self.get_target_tab();
 
         if let Some(tab) = tab {
             close_focus();
-            switch_tab_to(tab.position as u32 + 1);
+            go_to_tab_name(&tab.name);
         }
     }
 
@@ -140,11 +137,12 @@ impl State {
     }
 
     fn create_unfocused_new_tab(&mut self) {
-        let current_tab = self.get_active_tab().map(|tab| tab.position).unwrap_or(0) as u32;
-
         self.should_exit_if_tab_change = false;
+
+        let current_tab = self.get_active_tab().expect("No active tab");
+
         new_tab();
-        go_to_tab(current_tab);
+        switch_tab_to(current_tab.position as u32);
     }
 
     fn delete_selected_tab(&mut self) {
