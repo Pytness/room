@@ -73,12 +73,10 @@ impl State {
     }
 
     fn rename_selected_tab(&self) {
-        if let Some(selected) = self.selected_tab_position {
-            let tab = self.tabs.iter().find(|tab| tab.position == selected);
+        let tab = self.get_target_tab();
 
-            if let Some(tab) = tab {
-                rename_tab(tab.position as u32 + 1, self.name_buffer.clone());
-            }
+        if let Some(tab) = tab {
+            rename_tab(tab.position as u32 + 1, self.name_buffer.clone());
         }
     }
 
@@ -146,19 +144,21 @@ impl State {
     }
 
     fn delete_selected_tab(&mut self) {
-        let current_tab = self.get_active_tab().map(|tab| tab.position).unwrap_or(0) as u32;
+        self.should_exit_if_tab_change = false;
 
-        let target = self.selected_tab_position.unwrap() as u32;
+        let current_tab = self.get_active_tab().unwrap();
 
-        go_to_tab(target);
+        let target_tab = self.get_target_tab().unwrap();
+
+        go_to_tab_name(&target_tab.name);
         close_focused_tab();
 
         // Tabs info is not yet updated, account for the tab that was just closed
-        if target < current_tab {
-            go_to_tab(current_tab - 1);
-        } else {
-            go_to_tab(current_tab);
-        }
+        // if target_tab < current_tab {
+        //     switch_tab_to(current_tab.saturating_sub(1));
+        // } else {
+        //     switch_tab_to(current_tab);
+        // }
 
         // Tabs info is not yet updated, account for the tab that was just closed
         let tab_count = self.get_visible_tab_count() - 1;
@@ -166,8 +166,6 @@ impl State {
         if self.selected_tab_position.unwrap() >= tab_count {
             self.select_previous()
         }
-
-        self.should_exit_if_tab_change = false
     }
 
     fn select_next(&mut self) {
