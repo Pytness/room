@@ -2,7 +2,7 @@
 name = "room"
 version = "1.0.0"
 edition = "2021"
-authors = ["Lucas Rosa <x@rvcas.dev>"]
+authors = ["Fernando Vega <pytness@gmail.com>"]
 publish = false
 
 [dependencies]
