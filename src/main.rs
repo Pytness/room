@@ -17,15 +17,13 @@ enum Mode {
 
 impl std::fmt::Display for Mode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Mode::Normal => "Normal",
-                Mode::Search => "Search",
-                Mode::RenameTab => "Rename Tab",
-            },
-        )
+        let mode = match self {
+            Mode::Normal => "Normal",
+            Mode::Search => "Search",
+            Mode::RenameTab => "Rename",
+        };
+
+        write!(f, "{}", mode)
     }
 }
 
@@ -35,6 +33,7 @@ struct State {
     should_exit_if_tab_change: bool,
     mode: Mode,
     tabs: Vec<TabInfo>,
+    sessions: Vec<SessionInfo>,
     filter_buffer: String,
     name_buffer: String,
     selected_tab_position: Option<usize>,
@@ -82,7 +81,7 @@ impl State {
 
     fn update_tab_info(&mut self, tab_info: Vec<TabInfo>) {
         // TODO: Refactor this, setting selected_tab_index should be anothers function responsibility
-        // tabs are empty the when we open the plugin, so we select the first tab
+        // tabs are empty when we open the plugin, so we select the first tab
         if self.tabs.is_empty() {
             self.selected_tab_position = tab_info
                 .iter()
@@ -219,40 +218,40 @@ impl State {
     }
 
     /// Handles keys in normal mode. Returns true if the key was handled, false otherwise.
-    fn handle_normal_key(&mut self, key: Key) -> bool {
+    fn handle_normal_key(&mut self, key: KeyWithModifier) -> bool {
         let mut handled: bool = true;
-        match key {
-            Key::Char('/') => {
+        match key.bare_key {
+            BareKey::Char('/') => {
                 self.mode = Mode::Search;
                 self.reset_selection();
             }
 
-            Key::Char('K') => {
+            BareKey::Char('K') => {
                 self.filter_buffer.clear();
                 self.reset_selection();
             }
-            Key::Char('r') => {
+            BareKey::Char('r') => {
                 self.mode = Mode::RenameTab;
             }
-            Key::Esc | Key::Ctrl('q') => {
+            BareKey::Esc | BareKey::Char('q') => {
                 close_focus();
             }
-            Key::Down | Key::Char('j') => {
+            BareKey::Down | BareKey::Char('j') => {
                 self.select_next();
             }
-            Key::Up | Key::Char('k') => {
+            BareKey::Up | BareKey::Char('k') => {
                 self.select_previous();
             }
-            Key::Char('\n') | Key::Char('l') => {
+            BareKey::Enter | BareKey::Char('l') => {
                 self.focus_selected_tab();
             }
 
             // NOTE: Temporarily disabled due to a bug in Zellij
-            Key::Char('c') => {
+            BareKey::Char('c') => {
                 self.create_unfocused_new_tab();
             }
 
-            Key::Char('d') => {
+            BareKey::Char('d') => {
                 self.delete_selected_tab();
             }
             _ => {
@@ -264,22 +263,22 @@ impl State {
     }
 
     /// Handles keys in search mode. Returns true if the key was handled, false otherwise.
-    fn handle_search_key(&mut self, key: Key) -> bool {
+    fn handle_search_key(&mut self, key: KeyWithModifier) -> bool {
         let mut handled: bool = true;
 
-        match key {
-            Key::Esc => {
+        match key.bare_key {
+            BareKey::Esc => {
                 self.filter_buffer.clear();
                 self.mode = Mode::Normal;
             }
-            Key::Char('\n') => {
+            BareKey::Enter => {
                 self.mode = Mode::Normal;
             }
-            Key::Backspace => {
+            BareKey::Backspace => {
                 self.filter_buffer.pop();
             }
 
-            Key::Char(c) => {
+            BareKey::Char(c) => {
                 self.filter_buffer.push(c);
             }
             _ => {
@@ -294,24 +293,24 @@ impl State {
         handled
     }
 
-    fn handle_rename_key(&mut self, key: Key) -> bool {
+    fn handle_rename_key(&mut self, key: KeyWithModifier) -> bool {
         let mut handled: bool = true;
 
-        match key {
-            Key::Esc => {
+        match key.bare_key {
+            BareKey::Esc => {
                 self.mode = Mode::Normal;
             }
-            Key::Char('\n') => {
+            BareKey::Enter => {
                 self.rename_selected_tab();
                 self.name_buffer.clear();
                 self.mode = Mode::Normal;
             }
 
-            Key::Backspace => {
+            BareKey::Backspace => {
                 self.name_buffer.pop();
             }
 
-            Key::Char(c) => {
+            BareKey::Char(c) => {
                 self.name_buffer.push(c);
             }
             _ => {
@@ -323,7 +322,7 @@ impl State {
     }
 
     /// Handles a key event. Returns true if the key was handled, false otherwise.
-    fn handle_key_event(&mut self, key: Key) -> bool {
+    fn handle_key_event(&mut self, key: KeyWithModifier) -> bool {
         match self.mode {
             Mode::Normal => self.handle_normal_key(key),
             Mode::Search => self.handle_search_key(key),
@@ -416,7 +415,12 @@ impl ZellijPlugin for State {
 
         self.config = Config::from_configuration(configuration);
 
-        subscribe(&[EventType::PaneUpdate, EventType::TabUpdate, EventType::Key]);
+        subscribe(&[
+            EventType::PaneUpdate,
+            EventType::TabUpdate,
+            EventType::SessionUpdate,
+            EventType::Key,
+        ]);
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -453,6 +457,10 @@ impl ZellijPlugin for State {
                     }
                 }
             }
+
+            Event::SessionUpdate(session_info, _) => {
+                self.sessions = session_info;
+            }
             Event::Key(key) => {
                 should_render = self.handle_key_event(key);
             }
@@ -477,5 +485,14 @@ impl ZellijPlugin for State {
                 .collect::<Vec<String>>()
                 .join("\n")
         );
+        //
+        // println!("-----------------");
+        //
+        // for session in &self.sessions {
+        //     println!("Session: {}", session.name);
+        //     session.tabs.iter().for_each(|tab| {
+        //         println!("{}\n", self.render_tab_info(tab));
+        //     });
+        // }
     }
 }
