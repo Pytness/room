@@ -33,6 +33,9 @@ struct State {
     should_exit_if_tab_change: bool,
     mode: Mode,
     tabs: Vec<TabInfo>,
+    pane_manifest: PaneManifest,
+    floating_pane_id: Option<PaneId>,
+    floating_pane_coordinates: Option<FloatingPaneCoordinates>,
     sessions: Vec<SessionInfo>,
     filter_buffer: String,
     name_buffer: String,
@@ -41,16 +44,62 @@ struct State {
     tab_pane_count: HashMap<usize, usize>,
 }
 
-fn exit_plugin(_state: &State) {
+fn exit_plugin(state: &State) {
+    if let Some(floating_pane_id) = state.floating_pane_id {
+        change_floating_panes_coordinates(vec![(
+            floating_pane_id,
+            state.floating_pane_coordinates.clone().unwrap(),
+        )]);
+    }
+
     close_self();
 }
 
 impl State {
     fn initialize(&mut self) {
+        // change_floating_panes_coordinates
         self.should_exit_if_tab_change = true;
 
+        let active_tab = self.get_active_tab().unwrap();
+
+        let panes = self.pane_manifest.panes.get(&active_tab.position).unwrap();
+
+        let floating_pane = panes.iter().find(|pane| pane.is_floating);
+
+        if let Some(floating_pane) = floating_pane {
+            self.floating_pane_id = Some(PaneId::Terminal(floating_pane.id));
+            self.floating_pane_coordinates = Some(
+                FloatingPaneCoordinates::new(
+                    Some("0".to_string()),
+                    Some("0".to_string()),
+                    Some("0".to_string()),
+                    Some("0".to_string()),
+                    Some(false),
+                )
+                .unwrap()
+                .with_x_fixed(floating_pane.pane_x)
+                .with_y_fixed(floating_pane.pane_y)
+                .with_width_fixed(floating_pane.pane_columns)
+                .with_height_fixed(floating_pane.pane_rows),
+            );
+
+            change_floating_panes_coordinates(vec![(
+                self.floating_pane_id.unwrap(),
+                FloatingPaneCoordinates::new(
+                    Some("0".to_string()),
+                    Some("0".to_string()),
+                    Some("0".to_string()),
+                    Some("0".to_string()),
+                    Some(false),
+                )
+                .unwrap()
+                .with_x_fixed(10000000)
+                .with_y_fixed(10000000),
+            )]);
+        }
+
         let plugin_id = get_plugin_ids().plugin_id;
-        focus_plugin_pane(plugin_id, true);
+        focus_plugin_pane(plugin_id, false);
 
         if self.config.full_screen {
             toggle_focus_fullscreen();
@@ -119,7 +168,7 @@ impl State {
         let tab = self.get_target_tab();
 
         if let Some(tab) = tab {
-            close_focus();
+            exit_plugin(self);
             go_to_tab_name(&tab.name);
         }
     }
@@ -230,18 +279,23 @@ impl State {
                 self.filter_buffer.clear();
                 self.reset_selection();
             }
+
             BareKey::Char('r') => {
                 self.mode = Mode::RenameTab;
             }
+
             BareKey::Esc | BareKey::Char('q') => {
-                close_focus();
+                exit_plugin(self);
             }
+
             BareKey::Down | BareKey::Char('j') => {
                 self.select_next();
             }
+
             BareKey::Up | BareKey::Char('k') => {
                 self.select_previous();
             }
+
             BareKey::Enter | BareKey::Char('l') => {
                 self.focus_selected_tab();
             }
@@ -254,6 +308,7 @@ impl State {
             BareKey::Char('d') => {
                 self.delete_selected_tab();
             }
+
             _ => {
                 handled = false;
             }
@@ -271,9 +326,11 @@ impl State {
                 self.filter_buffer.clear();
                 self.mode = Mode::Normal;
             }
+
             BareKey::Enter => {
                 self.mode = Mode::Normal;
             }
+
             BareKey::Backspace => {
                 self.filter_buffer.pop();
             }
@@ -281,6 +338,7 @@ impl State {
             BareKey::Char(c) => {
                 self.filter_buffer.push(c);
             }
+
             _ => {
                 handled = false;
             }
@@ -300,6 +358,7 @@ impl State {
             BareKey::Esc => {
                 self.mode = Mode::Normal;
             }
+
             BareKey::Enter => {
                 self.rename_selected_tab();
                 self.name_buffer.clear();
@@ -424,22 +483,25 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) -> bool {
-        if !self.initialized {
+        if !self.initialized && !self.tabs.is_empty() {
             self.initialize();
         }
 
         let mut should_render = true;
 
         match event {
-            Event::PaneUpdate(manifest) => {
-                if let Some(self_pane) = self.identify_self_pane(&manifest) {
+            Event::PaneUpdate(pane_manifest) => {
+                self.pane_manifest = pane_manifest.clone();
+
+                if let Some(self_pane) = self.identify_self_pane(&pane_manifest) {
                     if !self_pane.is_focused {
                         exit_plugin(self);
                     }
                 }
 
-                self.build_tab_pane_count(manifest);
+                self.build_tab_pane_count(pane_manifest);
             }
+
             Event::TabUpdate(tab_info) => {
                 if self.selected_tab_position.is_none() {
                     self.update_tab_info(tab_info);
@@ -461,9 +523,11 @@ impl ZellijPlugin for State {
             Event::SessionUpdate(session_info, _) => {
                 self.sessions = session_info;
             }
+
             Event::Key(key) => {
                 should_render = self.handle_key_event(key);
             }
+
             _ => {
                 should_render = false;
             }
